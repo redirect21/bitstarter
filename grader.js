@@ -21,11 +21,14 @@ References:
    - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
 */
 
-var fs = require('fs');
+var fs      = require('fs');
+var util    = require('util');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest    = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://pure-lake-2069.herokuapp.com";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -35,6 +38,7 @@ var assertFileExists = function(infile) {
     }
     return instr;
 };
+
 
 var cheerioHtmlFile = function(htmlfile) {
     return cheerio.load(fs.readFileSync(htmlfile));
@@ -55,6 +59,27 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+var buildfn = function(dummy_file, checkHtml, checks) {
+    var writeToFile = function(result, response){
+        if(result instanceof Error) {
+            console.error('Error: ' + util.format(response.message));
+            process.exit(1);
+        } else {
+            fs.writeFileSync(dummy_file, result);
+            var checkJson = checkHtml(dummy_file, checks);
+            var outJson = JSON.stringify(checkJson, null, 4);
+            console.log(outJson);
+        }
+    }
+    return writeToFile;
+}
+
+var downUrlPage = function(url, dummy_file, checkHtml, checks){
+    var writeResp = buildfn(dummy_file, checkHtml, checks);
+    rest.get(url).on('complete', writeResp);
+    return dummy_file;
+}
+
 var clone = function(fn) {
     // Workaround for commander.js issue.
     // http://stackoverflow.com/a/6772648
@@ -65,10 +90,19 @@ if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url_path>', 'Path to URL')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    var checkJson = undefined;
+    if(program.url !== undefined){
+         var dummy_file = downUrlPage(program.url, "dummy.html", checkHtmlFile, program.checks);
+         //var checkJson = checkHtmlFile(dummy_file, program.checks);
+    }
+    else{
+         var checkJson = checkHtmlFile(program.file, program.checks);
+         var outJson = JSON.stringify(checkJson, null, 4);
+         console.log(outJson);
+    }
+
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
